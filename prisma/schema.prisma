@@ -1,0 +1,185 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  name              String
+  firstName         String?
+  lastName          String?
+  phone             String?
+  avatarUrl         String?
+  emailVerified     Boolean   @default(true)
+  onboardingStep    Int       @default(0)  // 0: not started, 1-3: in progress, 4: completed
+  verificationToken String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  vehicles          Vehicle[]
+  notifications     Notification[]
+}
+
+model Vehicle {
+  id             String                   @id @default(uuid())
+  userId         String
+  nickname       String?                  // e.g. "My Tesla", "Work Truck"
+  name           String                   // e.g. "2023 Tesla Model 3 Long Range"
+  make           String                   // e.g. "Tesla"
+  model          String                   // e.g. "Model 3"
+  year           Int                      // e.g. 2023
+  trim           String?                  // e.g. "Long Range Dual Motor AWD"
+  vin            String?
+  licensePlate   String?
+  mileage        Int                      // e.g. 24100
+  avgDailyMiles  Int                      @default(30)
+  vehicleType    String                   @default("CAR") // CAR, SUV, MOTORCYCLE, SCOOTER, VAN
+  fuelType       String                   @default("GASOLINE") // GASOLINE, DIESEL, HYBRID, ELECTRIC
+  transmission   String                   @default("AUTOMATIC")
+  engineCc       Int?                     // e.g. 155, 350, 650, 1998
+  driveType      String?                  // CHAIN, BELT, SHAFT, DIRECT_DRIVE, CVT, FWD, RWD, AWD
+  coolingType    String?                  // AIR, LIQUID, OIL
+  purchaseDate   DateTime?
+  imageUrl       String?
+  healthScore    Int                      @default(100)
+  obdConnected   Boolean                  @default(false)
+  lastObdSyncAt  DateTime?
+  lastPingAt     DateTime                 @default(now())
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  maintenanceRecords MaintenanceRecord[]
+  schedules          MaintenanceScheduleItem[]
+  diagnostics        DiagnosticScan[]
+  fuelLogs           FuelLog[]
+  documents          VehicleDocument[]
+  notifications      Notification[]
+
+  @@index([userId])
+  @@index([userId, createdAt])
+}
+
+model MaintenanceRecord {
+  id          String   @id @default(uuid())
+  vehicleId   String
+  title       String
+  serviceType String   // OIL_CHANGE, BRAKES, TIRES, BATTERY, FLUIDS, INSPECTION, REPAIR, RECALL, GENERAL, ELECTRICAL
+  serviceDate DateTime
+  mileage     Int
+  cost        Float
+  provider    String   // Dealership, Independent Shop, DIY
+  notes       String?
+  receiptText String?
+  createdAt   DateTime @default(now())
+
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@index([vehicleId, serviceDate])
+}
+
+model MaintenanceScheduleItem {
+  id                  String    @id @default(uuid())
+  vehicleId           String
+  taskName            String
+  category            String    // ENGINE, BRAKES, TIRES, FLUIDS, ELECTRICAL, FILTERS, OTHER
+  intervalMiles       Int
+  intervalMonths      Int
+  lastServicedMileage Int?
+  lastServicedDate    DateTime?
+  nextDueMileage      Int
+  nextDueDate         DateTime
+  urgency             String    @default("GOOD") // OVERDUE, DUE_SOON, GOOD
+  estimatedCost       Float?
+  isCustom            Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+
+  vehicle             Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@index([vehicleId, urgency])
+}
+
+model DiagnosticScan {
+  id               String   @id @default(uuid())
+  vehicleId        String
+  scanDate         DateTime @default(now())
+  codes            String   // e.g. "P0420, P0171"
+  symptoms         String?
+  severity         String   // CRITICAL, MODERATE, MINOR
+  canDrive         Boolean  @default(true)
+  aiSummary        String
+  possibleCauses   String   // JSON string array
+  diySteps         String   // JSON string array
+  estimatedCostMin Float
+  estimatedCostMax Float
+  status           String   @default("ACTIVE") // ACTIVE, RESOLVED, DISMISSED
+  dataSource       String   @default("OBD_II") // OBD_II, MANUAL, ESTIMATED
+  createdAt        DateTime @default(now())
+
+  vehicle          Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@index([vehicleId, status])
+}
+
+model FuelLog {
+  id            String   @id @default(uuid())
+  vehicleId     String
+  logDate       DateTime @default(now())
+  mileage       Int
+  units         Float    // Gallons or kWh
+  pricePerUnit  Float
+  totalCost     Float
+  calculatedMpg Float?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@index([vehicleId, logDate])
+}
+
+model VehicleDocument {
+  id           String   @id @default(uuid())
+  vehicleId    String
+  docType      String   // INSURANCE, REGISTRATION, WARRANTY, EMISSIONS
+  provider     String?
+  policyNumber String?
+  expiryDate   DateTime
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  vehicle      Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  userId     String
+  vehicleId  String?
+  type       String   // CRITICAL, WARNING, MAINTENANCE, DIAGNOSTIC, SYSTEM
+  title      String
+  message    String
+  status     String   @default("UNREAD") // UNREAD, READ, DISMISSED
+  link       String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle    Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+}
